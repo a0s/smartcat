@@ -1,0 +1,253 @@
+#!/usr/bin/env bash
+set -u
+
+VERSION="1.0.0"
+
+usage() {
+  cat <<'EOF'
+smartcat - a context-aware cat for interactive terminals
+
+Usage:
+  smartcat <file>        Render a single file nicely when stdout is a TTY
+  smartcat -native ...   Force the vanilla cat, passing the rest of the args
+  smartcat status        Show a table of file types and their renderers
+  smartcat init zsh      Print shell integration that makes `cat` smart (zsh)
+  smartcat init bash     Print shell integration for bash
+  smartcat --help        Show this help
+  smartcat --version     Show version
+
+Behavior:
+  smartcat renders a file with a configured viewer (Markdown, images, code, ...)
+  only when it is given exactly one readable file and stdout is a terminal.
+  In every other case (pipes, redirects, multiple files, flags, stdin) it
+  behaves exactly like the plain `cat`, so scripts never break.
+
+Configuration:
+  $SMARTCAT_CONFIG
+  ${XDG_CONFIG_HOME:-$HOME/.config}/smartcat/config.yaml
+  <prefix>/share/smartcat/config.default.yaml
+EOF
+}
+
+script_dir() {
+  local src="${BASH_SOURCE[0]}" dir
+  while [ -h "$src" ]; do
+    dir=$(cd -P "$(dirname "$src")" >/dev/null 2>&1 && pwd)
+    src=$(readlink "$src")
+    case "$src" in
+      /*) ;;
+      *) src="$dir/$src" ;;
+    esac
+  done
+  cd -P "$(dirname "$src")" >/dev/null 2>&1 && pwd
+}
+
+resolve_config() {
+  if [ -n "${SMARTCAT_CONFIG:-}" ] && [ -f "$SMARTCAT_CONFIG" ]; then
+    printf '%s\n' "$SMARTCAT_CONFIG"
+    return 0
+  fi
+  local user_cfg="${XDG_CONFIG_HOME:-$HOME/.config}/smartcat/config.yaml"
+  if [ -f "$user_cfg" ]; then
+    printf '%s\n' "$user_cfg"
+    return 0
+  fi
+  printf '%s\n' "$(dirname "$(script_dir)")/share/smartcat/config.default.yaml"
+}
+
+parse_config() {
+  awk '
+    function trim(s) { sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s); return s }
+    function unquote(s) {
+      if (s ~ /^".*"$/) return substr(s, 2, length(s) - 2)
+      if (s ~ /^'\''.*'\''$/) return substr(s, 2, length(s) - 2)
+      return s
+    }
+    function emit_list(val, h, kind,   n, arr, i, item) {
+      sub(/^\[/, "", val); sub(/\]$/, "", val)
+      n = split(val, arr, ",")
+      for (i = 1; i <= n; i++) {
+        item = unquote(trim(arr[i]))
+        if (item != "") print kind "\t" item "\t" h
+      }
+    }
+    {
+      stripped = $0
+      sub(/^[ \t]+/, "", stripped)
+      if (stripped == "" || stripped ~ /^#/) next
+      match($0, /^ */); ind = RLENGTH
+      content = trim($0)
+      if (content == "handlers:") { in_handlers = 1; next }
+      if (!in_handlers) next
+      if (ind == 2 && content ~ /:$/) {
+        cur = content; sub(/:$/, "", cur); in_cmds = 0; order = 0; next
+      }
+      if (ind == 4) {
+        in_cmds = 0
+        key = content; sub(/:.*$/, "", key)
+        val = content; sub(/^[^:]*:[ \t]*/, "", val)
+        if (key == "extensions") { emit_list(val, cur, "EXT"); next }
+        if (key == "mime") { emit_list(val, cur, "MIME"); next }
+        if (key == "hint") { print "HINT\t" cur "\t" unquote(val); next }
+        if (key == "commands") {
+          if (val == "") { in_cmds = 1; order = 0 }
+          else { n = split(val, arr, ","); for (i = 1; i <= n; i++) { order++; print "CMD\t" cur "\t" order "\t" unquote(trim(arr[i])) } }
+          next
+        }
+        next
+      }
+      if (ind >= 6 && in_cmds) {
+        c = content; sub(/^-[ \t]*/, "", c); c = unquote(c)
+        order++
+        print "CMD\t" cur "\t" order "\t" c
+        next
+      }
+    }
+  ' "$1"
+}
+
+run_template() {
+  local template="$1" file="$2" word
+  local argv=()
+  for word in $template; do
+    if [ "$word" = "{file}" ]; then
+      argv+=("$file")
+    else
+      argv+=("${word//\{file\}/$file}")
+    fi
+  done
+  exec "${argv[@]}"
+}
+
+render() {
+  local file="$1"
+  local cfg; cfg="$(resolve_config)"
+  if [ ! -f "$cfg" ]; then exec command cat -- "$file"; fi
+
+  local table; table="$(parse_config "$cfg")"
+
+  local ext; ext="${file##*.}"
+  if [ "$ext" = "$file" ]; then ext=""; fi
+  ext="$(printf '%s' "$ext" | tr '[:upper:]' '[:lower:]')"
+
+  local handler=""
+  if [ -n "$ext" ]; then
+    handler="$(printf '%s\n' "$table" | awk -F'\t' -v e="$ext" '$1=="EXT" && $2==e {print $3; exit}')"
+  fi
+  if [ -z "$handler" ] && [ -x /usr/bin/file ]; then
+    local mime; mime="$(/usr/bin/file --mime-type -b -- "$file" 2>/dev/null)"
+    if [ -n "$mime" ]; then
+      handler="$(printf '%s\n' "$table" | awk -F'\t' -v m="$mime" '$1=="MIME" { pat=$2; gsub(/\*/, ".*", pat); if (m ~ "^" pat "$") { print $3; exit } }')"
+    fi
+  fi
+
+  if [ -z "$handler" ]; then exec command cat -- "$file"; fi
+
+  local cmds; cmds="$(printf '%s\n' "$table" | awk -F'\t' -v h="$handler" '$1=="CMD" && $2==h {print $3 "\t" $4}' | sort -n -k1,1)"
+  local order template bin
+  local templates=()
+  while IFS=$'\t' read -r order template; do
+    [ -n "$template" ] && templates+=("$template")
+  done <<EOF
+$cmds
+EOF
+  if [ "${#templates[@]}" -gt 0 ]; then
+    for template in "${templates[@]}"; do
+      bin="${template%% *}"
+      if command -v "$bin" >/dev/null 2>&1; then
+        run_template "$template" "$file"
+      fi
+    done
+  fi
+
+  local hint; hint="$(printf '%s\n' "$table" | awk -F'\t' -v h="$handler" '$1=="HINT" && $2==h {print $3; exit}')"
+  command cat -- "$file"; local rc=$?
+  if [ -n "$hint" ]; then printf '\nsmartcat: %s\n' "$hint" >&2; fi
+  return $rc
+}
+
+cmd_init() {
+  local shell="${1:-zsh}"
+  case "$shell" in
+    zsh|bash) printf '%s\n' 'cat() { if command -v smartcat >/dev/null 2>&1; then command smartcat "$@"; else command cat "$@"; fi; }' ;;
+    *) printf 'smartcat: unsupported shell: %s\n' "$shell" >&2; return 1 ;;
+  esac
+}
+
+cmd_status() {
+  local cfg; cfg="$(resolve_config)"
+  if [ ! -f "$cfg" ]; then printf 'smartcat: no config found\n' >&2; return 1; fi
+  local table; table="$(parse_config "$cfg")"
+
+  local handlers
+  handlers="$(awk '
+    /^handlers:[[:space:]]*$/ { inh=1; next }
+    inh && /^  [A-Za-z0-9_-]+:[[:space:]]*$/ { line=$0; sub(/^  */, "", line); sub(/:[[:space:]]*$/, "", line); print line; next }
+    inh && /^[^[:space:]]/ { inh=0 }
+  ' "$cfg")"
+
+  local TAB NL rows missing
+  TAB="$(printf '\t')"; NL="$(printf '\nx')"; NL="${NL%x}"
+  rows="TYPE${TAB}ACTIVE${TAB}RENDERERS (+ installed)${TAB}EXTENSIONS"
+  missing=""
+
+  local h exts order tmpl bin chain active hint
+  while IFS= read -r h; do
+    [ -n "$h" ] || continue
+    exts="$(printf '%s\n' "$table" | awk -F'\t' -v hh="$h" '$1=="EXT" && $3==hh {printf "%s%s", sep, $2; sep=", "}')"
+    [ -n "$exts" ] || exts="-"
+    chain=""; active=""
+    while IFS="$TAB" read -r order tmpl; do
+      [ -n "$tmpl" ] || continue
+      bin="${tmpl%% *}"
+      if command -v "$bin" >/dev/null 2>&1; then
+        chain="$chain${chain:+ }$bin(+)"
+        [ -n "$active" ] || active="$bin"
+      else
+        chain="$chain${chain:+ }$bin(-)"
+      fi
+    done <<INNER
+$(printf '%s\n' "$table" | awk -F'\t' -v hh="$h" '$1=="CMD" && $2==hh {print $3 "\t" $4}' | sort -n -k1,1)
+INNER
+    [ -n "$chain" ] || chain="-"
+    if [ -z "$active" ]; then
+      active="MISSING"
+      hint="$(printf '%s\n' "$table" | awk -F'\t' -v hh="$h" '$1=="HINT" && $2==hh {print $3; exit}')"
+      [ -z "$hint" ] || missing="$missing  $h: $hint$NL"
+    fi
+    rows="$rows$NL$h$TAB$active$TAB$chain$TAB$exts"
+  done <<OUTER
+$handlers
+OUTER
+
+  printf 'smartcat %s\n' "$VERSION"
+  printf 'config: %s\n\n' "$cfg"
+  printf '%s\n' "$rows" | column -t -s "$TAB"
+  if [ -n "$missing" ]; then printf '\nMissing renderers:\n%s' "$missing"; fi
+}
+
+main() {
+  case "${1:-}" in
+    --version|-V) printf 'smartcat %s\n' "$VERSION"; return 0 ;;
+    --help|-h) usage; return 0 ;;
+    init) shift; cmd_init "$@"; return $? ;;
+    status|--status) cmd_status; return $? ;;
+    -native|--native) shift; exec command cat "$@" ;;
+  esac
+
+  if [ ! -t 1 ] || [ "$#" -ne 1 ]; then
+    exec command cat "$@"
+  fi
+
+  local file="$1"
+  case "$file" in
+    -*) exec command cat "$@" ;;
+  esac
+  if [ ! -f "$file" ] || [ ! -r "$file" ]; then
+    exec command cat "$@"
+  fi
+
+  render "$file"
+}
+
+main "$@"

@@ -1,0 +1,43 @@
+handlers:
+  markdown:
+    extensions: [md, markdown, mdown, mkd, mkdn]
+    mime: [text/markdown]
+    commands:
+      - glow {file}
+      - mdcat {file}
+      - bat --style=plain --paging=never {file}
+    hint: "For rendered Markdown: brew install glow (or bat / mdcat)"
+
+  image:
+    extensions: [png, jpg, jpeg, gif, webp, bmp, tiff, heic]
+    mime: [image/*]
+    commands:
+      - imgcat {file}
+      - chafa {file}
+    hint: "For inline images: enable iTerm2 Shell Integration (imgcat) or brew install chafa"
+
+  data:
+    extensions: [csv, tsv, json, yaml, yml, toml, ini]
+    commands:
+      - bat --style=plain --paging=never {file}
+    hint: "For nicer structured data: brew install bat"
+
+  pdf:
+    extensions: [pdf]
+    mime: [application/pdf]
+    commands:
+      - pdftotext {file} -
+      - mutool convert -F text -o /dev/stdout {file}
+    hint: "For PDF text in the terminal: brew install poppler (or mupdf-tools)"
+
+  archive:
+    extensions: [zip, tar, tgz, gz, bz2, xz]
+    commands:
+      - bsdtar -tvf {file}
+    hint: "Archive listing uses bsdtar, which ships with macOS"
+
+  code:
+    extensions: [py, js, ts, tsx, jsx, sh, zsh, bash, rb, go, rs, c, h, cpp, hpp, java, kt, swift, lua, sql, html, css, scss, vue, php, pl, r]
+    commands:
+      - bat --style=numbers --paging=never {file}
+    hint: "For syntax highlighting: brew install bat"
