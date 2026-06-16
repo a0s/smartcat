@@ -131,7 +131,7 @@ assert_contains "hint follows content after a blank line" "$out" "SENTINEL-MD-CO
 assert_contains "content precedes hint" "${out%%smartcat:*}" "SENTINEL-MD-CONTENT"
 
 echo "== status =="
-sout="$(PATH="$FAKE_ALL:$BASE_PATH" SMARTCAT_CONFIG="$CONFIG" "$BIN" status)"
+sout="$(PATH="$FAKE_ALL:$BASE_PATH" SMARTCAT_CONFIG="$CONFIG" "$BIN" -status)"
 assert_contains "status has header" "$sout" "ACTIVE"
 assert_contains "status lists markdown" "$sout" "markdown"
 assert_contains "status lists pdf" "$sout" "pdf"

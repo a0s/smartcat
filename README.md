@@ -57,12 +57,12 @@ It must come first, because it is a smartcat directive, not a `cat` flag.
 
 ## Inspecting handlers
 
-`cat status` (or `cat --status`) prints a table of every known file type, the
+`cat -status` (or `cat --status`) prints a table of every known file type, the
 renderer chain for it, which renderers are installed (`+`/`-`), and the active
 one that will actually run. Missing renderers are listed with their install hint:
 
 ```
-cat status
+cat -status
 ```
 
 ```

@@ -10,7 +10,7 @@ smartcat - a context-aware cat for interactive terminals
 Usage:
   smartcat <file>        Render a single file nicely when stdout is a TTY
   smartcat -native ...   Force the vanilla cat, passing the rest of the args
-  smartcat status        Show a table of file types and their renderers
+  smartcat -status       Show a table of file types and their renderers
   smartcat init zsh      Print shell integration that makes `cat` smart (zsh)
   smartcat init bash     Print shell integration for bash
   smartcat --help        Show this help
@@ -231,7 +231,7 @@ main() {
     --version|-V) printf 'smartcat %s\n' "$VERSION"; return 0 ;;
     --help|-h) usage; return 0 ;;
     init) shift; cmd_init "$@"; return $? ;;
-    status|--status) cmd_status; return $? ;;
+    -status|--status) cmd_status; return $? ;;
     -native|--native) shift; exec command cat "$@" ;;
   esac
 
