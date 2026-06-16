@@ -1,7 +1,7 @@
 class Smartcat < Formula
   desc "Context-aware cat that renders Markdown, images and code in your terminal"
   homepage "https://github.com/a0s/smartcat"
-  url "https://github.com/a0s/smartcat/archive/refs/tags/v1.0.0.tar.gz"
+  url "https://github.com/a0s/smartcat/archive/refs/tags/v0.1.0.tar.gz"
   sha256 "0000000000000000000000000000000000000000000000000000000000000000"
   license "MIT"
   head "https://github.com/a0s/smartcat.git", branch: "main"

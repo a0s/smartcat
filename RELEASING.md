@@ -5,7 +5,7 @@
 1. Tag a stable release and push the tag:
 
    ```
-   git tag v1.0.0 && git push --tags
+   git tag v0.1.0 && git push --tags
    ```
 
 2. Update the formula's `url` and `sha256` in `Formula/smartcat.rb`
