@@ -1,21 +1,42 @@
 # Releasing (maintainer notes)
 
-## Cutting a release
+smartcat is distributed through a Homebrew tap that lives in a separate repo:
+[a0s/homebrew-smartcat](https://github.com/a0s/homebrew-smartcat). Users install
+it with a single command (Homebrew auto-taps):
 
-1. Tag a stable release and push the tag:
+```
+brew install a0s/smartcat/smartcat
+```
+
+The tap repo holds only `Formula/smartcat.rb`. It needs no tags - Homebrew reads
+the formula from its `main` branch, and the released version is pinned inside the
+formula via `url` + `sha256`. Tags live on this (source) repo only.
+
+## Cutting a new release
+
+1. In this repo: bump `VERSION` in `bin/smartcat`, commit, push.
+2. Tag and push the tag:
 
    ```
    git tag v0.1.0 && git push --tags
    ```
 
-2. Update the formula's `url` and `sha256` in `Formula/smartcat.rb`
-   (`brew fetch` prints the checksum for the release tarball).
+3. Compute the tarball checksum:
 
-## Submitting to homebrew-core
+   ```
+   curl -sL https://github.com/a0s/smartcat/archive/refs/tags/v0.1.0.tar.gz | shasum -a 256
+   ```
 
-Once the project is notable enough to qualify:
+4. In the **homebrew-smartcat** repo, update `Formula/smartcat.rb`:
+   - `url` -> the new tag's tarball;
+   - `sha256` -> the checksum from step 3.
 
-1. Ensure `brew audit --strict --new smartcat` and `brew test smartcat` pass.
-2. Open a pull request against `Homebrew/homebrew-core`.
+   Commit and push. Users get it via `brew update && brew upgrade smartcat`.
 
-After it merges, `brew install smartcat` works for everyone with no tap.
+## Verifying the formula
+
+```
+brew audit --strict --online a0s/smartcat/smartcat
+brew install a0s/smartcat/smartcat
+brew test a0s/smartcat/smartcat
+```

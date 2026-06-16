@@ -79,31 +79,8 @@ pdf       mutool  pdftotext(-) mutool(+)   pdf
 
 ## Install
 
-### Homebrew (recommended)
-
-Before the formula is in homebrew-core, install it from the tap:
-
 ```
-brew tap a0s/smartcat https://github.com/a0s/homebrew-smartcat
 brew install a0s/smartcat/smartcat
-```
-
-Install the latest `main` without a tagged release:
-
-```
-brew install --HEAD a0s/smartcat/smartcat
-```
-
-Build straight from a local checkout of this repo:
-
-```
-brew install --build-from-source ./Formula/smartcat.rb
-```
-
-After the formula is accepted into homebrew-core, this is all you need:
-
-```
-brew install smartcat
 ```
 
 ### Optional viewers
