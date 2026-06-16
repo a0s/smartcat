@@ -1,5 +1,9 @@
 # smartcat
 
+<p align="center">
+  <img src="images/banner.webp" alt="smartcat - a context-aware cat that renders Markdown, images, PDFs and code right in your terminal" width="100%">
+</p>
+
 **Make `cat` smart - transparently.** Keep typing `cat` exactly as you always
 have. When you're a human looking at a single file in a terminal, it renders the
 file the way you'd want - Markdown, images, code, data. The instant the output
