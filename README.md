@@ -42,9 +42,12 @@ Otherwise it `exec`s the real `cat` with your arguments untouched - so
 byte-for-byte. The shim lives only in your interactive shell, so `cron` jobs and
 `sh script.sh` never even see it.
 
-There are **no required dependencies**. If a file type has no installed viewer,
-it prints a short hint to stderr (e.g. `brew install glow`) and falls back to
-plain `cat`, so you still see the content.
+smartcat doesn't render anything itself - it hands each file to a real viewer
+(`glow`, `bat`, `imgcat`, and friends) and steps aside. It installs with no
+dependencies, but it's only as useful as the viewers you have: a file type with
+no viewer installed just falls back to plain `cat` and prints a one-line hint
+about what to install. So grab the renderers for the types you care about - see
+[Renderers](#renderers) below.
 
 ## Forcing the plain cat
 
@@ -83,16 +86,22 @@ pdf       mutool  pdftotext(-) mutool(+)   pdf
 brew install a0s/smartcat/smartcat
 ```
 
-### Optional viewers
+### Renderers
 
-`smartcat` works without them, but they make it shine:
+These are what actually render your files. Install the ones for the types you
+use and skip the rest - anything without a renderer falls back to plain `cat`.
 
 ```
-brew install glow bat chafa
+brew install glow       # Markdown
+brew install bat        # code, JSON/YAML/CSV, syntax highlighting
+brew install poppler    # PDF (text)
+brew install chafa      # images, when you're not in iTerm2
 ```
 
-For inline images, enable iTerm2 shell integration: **iTerm2 → Install Shell
-Integration** (this provides `imgcat`).
+In iTerm2 images render with its built-in `imgcat` - turn it on via
+**iTerm2 → Install Shell Integration** (no brew package needed).
+
+Run `cat -status` to see what's covered and what's missing.
 
 ## Make `cat` smart (opt-in)
 
