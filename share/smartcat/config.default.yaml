@@ -31,7 +31,7 @@ handlers:
     hint: "For PDF text in the terminal: brew install poppler (or mupdf-tools)"
 
   archive:
-    extensions: [zip, tar, tgz, gz, bz2, xz]
+    extensions: [zip, tar, tgz, tbz, tbz2, txz, taz, tzst]
     commands:
       - bsdtar -tvf {file}
     hint: "Archive listing uses bsdtar, which ships with macOS"

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -u
 
-VERSION="0.1.0"
+VERSION="0.2.0"
 
 usage() {
   cat <<'EOF'
@@ -119,6 +119,57 @@ run_template() {
   exec "${argv[@]}"
 }
 
+# Strips one layer of compression from a single compressed file (e.g. foo.sql.gz)
+# into a temp file named after the inner extension, then re-renders that temp
+# file so the inner type (sql, md, json, ...) picks its own handler. True
+# archives (.tar.gz, .tgz, .zip, ...) are left alone for the "archive" handler
+# - render() normalizes those to their tgz/tbz2/... alias before ever calling
+# this function, so it never sees a compressed-tarball extension here.
+#
+# Sets RENDER_COMPRESSED_RC to the real exit code and returns 0 when it fully
+# handled the file (rendered, or degraded to plain cat with a hint). Returns 1
+# when the extension isn't a recognized single-file compression - the caller
+# should fall through to normal render().
+render_compressed() {
+  local file="$1" ext="$2"
+  local decomp hint
+  case "$ext" in
+    gz) decomp="gzip -dc"; hint="gzip ships with macOS" ;;
+    bz2) decomp="bzip2 -dc"; hint="bzip2 ships with macOS" ;;
+    xz) decomp="xz -dc"; hint="brew install xz" ;;
+    zst) decomp="zstd -dc"; hint="brew install zstd" ;;
+    *) return 1 ;;
+  esac
+
+  local inner="${file%.*}"
+  local bin="${decomp%% *}"
+  if ! command -v "$bin" >/dev/null 2>&1; then
+    command cat -- "$file"; RENDER_COMPRESSED_RC=$?
+    printf '\nsmartcat: %s not found; showing raw %s content (%s)\n' "$bin" "$ext" "$hint" >&2
+    return 0
+  fi
+
+  local tmp; tmp="$(mktemp -d)"
+  if [ -z "$tmp" ]; then
+    command cat -- "$file"; RENDER_COMPRESSED_RC=$?
+    return 0
+  fi
+
+  local name; name="$(basename "$inner")"
+  [ -n "$name" ] || name="decompressed"
+  if ! $decomp "$file" > "$tmp/$name" 2>/dev/null; then
+    rm -rf "$tmp"
+    command cat -- "$file"; RENDER_COMPRESSED_RC=$?
+    printf '\nsmartcat: could not decompress with %s; showing raw bytes\n' "$bin" >&2
+    return 0
+  fi
+
+  ( render "$tmp/$name" )
+  RENDER_COMPRESSED_RC=$?
+  rm -rf "$tmp"
+  return 0
+}
+
 render() {
   local file="$1"
   local cfg; cfg="$(resolve_config)"
@@ -129,6 +180,31 @@ render() {
   local ext; ext="${file##*.}"
   if [ "$ext" = "$file" ]; then ext=""; fi
   ext="$(printf '%s' "$ext" | tr '[:upper:]' '[:lower:]')"
+
+  # A compressed tarball (app.tar.gz) is a real archive, not a single
+  # compressed file - normalize to the alias extension the "archive" handler
+  # already knows (tgz/tbz2/txz/tzst) so extension lookup finds it below.
+  # {file} in the command template still gets the original path; bsdtar
+  # reads compressed tar streams natively regardless of the suffix used.
+  case "$ext" in
+    gz|bz2|xz|zst)
+      local base; base="${file%.*}"
+      local base_ext; base_ext="${base##*.}"
+      base_ext="$(printf '%s' "$base_ext" | tr '[:upper:]' '[:lower:]')"
+      if [ "$base_ext" = "tar" ]; then
+        case "$ext" in
+          gz) ext="tgz" ;;
+          bz2) ext="tbz2" ;;
+          xz) ext="txz" ;;
+          zst) ext="tzst" ;;
+        esac
+      fi
+      ;;
+  esac
+
+  if [ -n "$ext" ] && render_compressed "$file" "$ext"; then
+    return "$RENDER_COMPRESSED_RC"
+  fi
 
   local handler=""
   if [ -n "$ext" ]; then

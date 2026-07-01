@@ -96,7 +96,11 @@ brew install glow       # Markdown
 brew install bat        # code, JSON/YAML/CSV, syntax highlighting
 brew install poppler    # PDF (text)
 brew install chafa      # images, when you're not in iTerm2
+brew install xz         # .xz single-file decompression
+brew install zstd       # .zst single-file decompression
 ```
+
+`gzip` and `bzip2` (for `.gz` / `.bz2`) ship with macOS, no install needed.
 
 In iTerm2 images render with its built-in `imgcat` - turn it on via
 **iTerm2 → Install Shell Integration** (no brew package needed).
@@ -124,6 +128,21 @@ eval "$(smartcat init zsh)"
 2. **By MIME as a fallback** - for files with no extension or an unknown one,
    `smartcat` consults `file --mime-type` (built into macOS, not a dependency)
    and matches it against each handler's optional `mime` patterns.
+
+### Single compressed files
+
+A file compressed with a single-stream codec (`.gz`, `.bz2`, `.xz`, `.zst`) is
+not an archive - it's one file with a suffix stuck on the end. `smartcat`
+strips that one layer into a temp file, then re-renders using the *inner*
+extension, so `dump.sql.gz` renders as syntax-highlighted SQL, `notes.md.gz`
+renders as Markdown, `data.json.gz` renders as pretty JSON, and so on. If the
+matching decompressor isn't installed, or the file isn't valid for its
+extension, it falls back to plain `cat` with a hint, same as any other
+missing renderer.
+
+A compressed **tarball** (`.tar.gz`, `.tgz`, `.tar.bz2`, ...) is a real
+archive, not a single file - it keeps going to the `archive` handler and gets
+listed with `bsdtar`, unpacked or not.
 
 ## Configuration
 

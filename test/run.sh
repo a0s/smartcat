@@ -29,6 +29,9 @@ assert_not_contains() {
     *) ok "$1" ;;
   esac
 }
+assert_files_eq() {
+  if cmp -s "$2" "$3"; then ok "$1"; else bad "$1" "files [$2] and [$3] differ"; fi
+}
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
@@ -69,7 +72,7 @@ run_pty() {
 
 FAKE_ALL="$TMP/fake_all"
 FAKE_BAT="$TMP/fake_bat"
-make_fakes "$FAKE_ALL" glow mdcat bat imgcat chafa
+make_fakes "$FAKE_ALL" glow mdcat bat imgcat chafa bsdtar
 make_fakes "$FAKE_BAT" bat
 
 MD="$TMP/sample.md"
@@ -80,6 +83,14 @@ TXT="$TMP/notes.txt"
 printf 'plain text\nwith two lines\n' > "$TXT"
 GIF="$TMP/noext_image"
 printf 'GIF89a\001\000\001\000\000\377\377\377\054' > "$GIF"
+GZ="$TMP/dump.sql.gz"
+printf 'SELECT 1; -- SENTINEL-SQL\n' | gzip > "$GZ"
+TAR="$TMP/dump.sql.tar"
+tar cf "$TAR" -C "$TMP" sample.py
+TGZ="$TMP/dump.sql.tgz"
+tar czf "$TGZ" -C "$TMP" sample.py
+TARGZ="$TMP/dump.sql.tar.gz"
+tar czf "$TARGZ" -C "$TMP" sample.py
 
 export SMARTCAT_CONFIG="$CONFIG"
 BASE_PATH="/usr/bin:/bin"
@@ -95,6 +106,9 @@ assert_eq "single file piped equals cat" "$(command cat "$MD")" "$("$BIN" "$MD" 
 assert_eq "multi file equals cat" "$(command cat "$MD" "$TXT")" "$("$BIN" "$MD" "$TXT" | command cat)"
 assert_eq "flag -n equals cat -n" "$(command cat -n "$MD")" "$("$BIN" -n "$MD" | command cat)"
 assert_eq "missing file behaves like cat" "$(command cat "$TMP/nope.md" 2>&1)" "$("$BIN" "$TMP/nope.md" 2>&1)"
+command cat "$GZ" > "$TMP/gz_via_cat"
+"$BIN" "$GZ" > "$TMP/gz_via_smartcat"
+assert_files_eq "piped gz stays byte-for-byte (no decompression)" "$TMP/gz_via_cat" "$TMP/gz_via_smartcat"
 
 echo "== TTY rendering selection =="
 out="$(PATH="$FAKE_ALL:$BASE_PATH" run_pty env PATH="$FAKE_ALL:$BASE_PATH" SMARTCAT_CONFIG="$CONFIG" "$BIN" "$MD")"
@@ -108,6 +122,23 @@ assert_contains "py uses code handler (bat)" "$out" "FAKE bat ARGS="
 
 out="$(run_pty env PATH="$FAKE_ALL:$BASE_PATH" SMARTCAT_CONFIG="$CONFIG" "$BIN" "$GIF")"
 assert_contains "extensionless gif detected via mime" "$out" "FAKE imgcat ARGS="
+
+echo "== compressed single files re-render by inner extension =="
+out="$(run_pty env PATH="$FAKE_BAT:$BASE_PATH" SMARTCAT_CONFIG="$CONFIG" "$BIN" "$GZ")"
+assert_contains "sql.gz decompresses and renders via bat" "$out" "FAKE bat ARGS="
+assert_contains "sql.gz picks the inner .sql extension" "$out" "dump.sql]"
+
+out="$(run_pty env PATH="$FAKE_ALL:$BASE_PATH" SMARTCAT_CONFIG="$CONFIG" "$BIN" "$TAR")"
+assert_contains "sql.tar (uncompressed) is listed as an archive via bsdtar" "$out" "FAKE bsdtar ARGS=[-tvf $TAR]"
+assert_not_contains "sql.tar is not decompressed to a temp file" "$out" "FAKE bat"
+
+out="$(run_pty env PATH="$FAKE_ALL:$BASE_PATH" SMARTCAT_CONFIG="$CONFIG" "$BIN" "$TGZ")"
+assert_contains "sql.tgz (single-word alias) is listed as an archive via bsdtar" "$out" "FAKE bsdtar ARGS=[-tvf $TGZ]"
+assert_not_contains "sql.tgz is not decompressed to a temp file" "$out" "FAKE bat"
+
+out="$(run_pty env PATH="$FAKE_ALL:$BASE_PATH" SMARTCAT_CONFIG="$CONFIG" "$BIN" "$TARGZ")"
+assert_contains "sql.tar.gz (compound suffix) is listed as an archive via bsdtar" "$out" "FAKE bsdtar ARGS=[-tvf $TARGZ]"
+assert_not_contains "sql.tar.gz is not decompressed to a temp file" "$out" "FAKE bat"
 
 echo "== regression: stdin must not leak the command list to the renderer =="
 leak_probe="$(printf 'CONFIG-LEAK-DATA' | "$FAKE_ALL/glow")"
